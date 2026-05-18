@@ -1,0 +1,38 @@
+====================================================================
+DEPENDENCIAS Y REQUISITOS DEL SISTEMA DE RADAR 360°
+====================================================================
+
+Para compilar con éxito el firmware 'Codigo_Radar_TFT.ino', es necesario 
+contar con las siguientes bibliotecas instaladas en el entorno de Arduino IDE.
+
+--------------------------------------------------------------------
+1. Adafruit GFX Library (Biblioteca Gráfica Base)
+--------------------------------------------------------------------
+* Desarrollador: Adafruit
+* Función: Proporciona las funciones primitivas de dibujo (líneas, círculos, texto).
+* Repositorio Oficial: https://github.com/adafruit/Adafruit-GFX-Library
+* Instalación rápida: Buscar "Adafruit GFX" en el Gestor de Tarjetas/Librerías de Arduino.
+
+--------------------------------------------------------------------
+2. MCUFRIEND_kbv (Driver de la Pantalla TFT Shield)
+--------------------------------------------------------------------
+* Desarrollador: David Prentice
+* Función: Identifica el ID del chip controlador de la pantalla y maneja el bus paralelo.
+* Repositorio Oficial: https://github.com/prenticedavid/MCUFRIEND_kbv
+* Instalación rápida: Buscar "MCUFRIEND_kbv" en el Gestor de Librerías de Arduino.
+
+--------------------------------------------------------------------
+3. Stepper (Control del Motor Paso a Paso)
+--------------------------------------------------------------------
+* Desarrollador: Arduino Core Team
+* Función: Controla la secuencia de pasos de motores bipolares/unipolares.
+* Nota de instalación: NO requiere descarga externa. Viene incluida por 
+  defecto en la instalación base de Arduino IDE.
+
+====================================================================
+INSTRUCCIONES DE INSTALACIÓN MANUAL (Alternativa .ZIP)
+====================================================================
+Si prefieres instalar las bibliotecas manualmente sin usar el gestor del IDE:
+1. Descarga el archivo .ZIP desde los enlaces de GitHub provistos arriba.
+2. En Arduino IDE, ve a: Programa -> Incluir Librería -> Añadir biblioteca .ZIP...
+3. Selecciona el archivo descargado y reinicia el IDE antes de compilar.
