@@ -1,0 +1,37 @@
+====================================================================
+SISTEMA DE RADAR AUTÓNOMO 360° - GUÍA DE CONFIGURACIÓN RÁPIDA
+====================================================================
+
+1. DEPENDENCIAS DE BIBLIOTECAS:
+   Para que el código compile sin errores, asegúrate de tener instaladas
+   las siguientes bibliotecas en tu Arduino IDE (puedes instalarlas desde
+   el Gestor de Bibliotecas o copiando las carpetas de /libraries a la
+   carpeta "libraries" de tus Documentos/Arduino):
+   
+   - MCUFRIEND_kbv (Por David Prentice) -> Controla el Shield TFT.
+   - Adafruit GFX Library (Por Adafruit) -> Renderiza los gráficos en pantalla.
+   - Stepper (Nativa de Arduino) -> Controla las fases del motor 28BYJ-48.
+
+2. AJUSTES PREVIOS A LA COMPILACIÓN:
+   - El código está configurado para un motor de 2048 pasos por revolución.
+     Si tu motor tiene otra relación de reducción, ajusta la constante
+     PASOS_POR_REVOLUCION.
+   - Velocidad del motor calibrada en setSpeed(8) para dar tiempo a que
+     el sensor ultrasónico tome sus 3 lecturas de la mediana móvil de forma estable.
+
+3. PROCESO DE CARGA DEL FIRMWARE (¡CRÍTICO!):
+   - ¡ADVERTENCIA!: Los pines TRIG y ECHO están asignados a los pines 0 y 1.
+   - PASO 1: Desconecta físicamente los cables de TRIG y ECHO de tu placa Arduino.
+   - PASO 2: Conecta el Arduino a la PC mediante el cable USB.
+   - PASO 3: Selecciona el puerto COM correcto y dale a "Subir" (Upload).
+   - PASO 4: Una vez que el IDE diga "Subido con éxito", vuelve a conectar 
+             los cables de TRIG y ECHO en los pines 0 y 1.
+   
+   *Si no desconectas los pines 0 y 1 durante la carga, la PC no podrá 
+    comunicarse con el chip ATmega y arrojará el error 'stk500_getsync()'.
+
+4. ALIMENTACIÓN ELÉCTRICA:
+   - Recuerda alimentar el controlador ULN2003 con una fuente externa de 5V.
+   - Conecta el GND de la fuente externa al GND del Arduino para unificar la referencia.
+   - NO alimentes el motor directamente desde el pin de 5V del Arduino, o la pantalla
+     se apagará o parpadeará debido al consumo de corriente.
