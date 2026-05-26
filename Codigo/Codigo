@@ -1,143 +1,240 @@
-#include <Adafruit_GFX.h>    
-#include <MCUFRIEND_kbv.h>   
-#include <Stepper.h>
+#include <Adafruit_GFX.h>
+#include <MCUFRIEND_kbv.h>
+#include <Servo.h>
 
+// ---------------- ASIGNACIÓN DE PINES ----------------
+constexpr uint8_t PIN_TRIG  = 12;
+constexpr uint8_t PIN_ECHO  = 11;
+constexpr uint8_t PIN_SERVO = 10;
+
+// --------------- CONSTANTES CONFIGURABLES ---------------
+constexpr float VELOCIDAD_SONIDO = 0.0343;
+constexpr uint16_t TIMEOUT_ECHO   = 26000; // Microsegundos (~440 cm max)
+
+// Colores en formato RGB565
+constexpr uint16_t COLOR_NEGRO     = 0x0000;
+constexpr uint16_t COLOR_VERDE     = 0x07E0;
+constexpr uint16_t COLOR_VERDE_OSC = 0x0240;
+constexpr uint16_t COLOR_ROJO      = 0xF800;
+constexpr uint16_t COLOR_GRIS      = 0x5A4B;
+
+// Dimensiones de la pantalla y Radar
+constexpr uint16_t CENTRO_X  = 160;
+constexpr uint16_t CENTRO_Y  = 215;
+constexpr uint16_t RADIO_MAX = 130;
+
+// Configuración del barrido
+constexpr uint8_t TIEMPO_PASO   = 15; // Delay entre grados (ms)
+constexpr uint8_t PASO_ANGULO   = 2;  // Incremento de grados por paso
+constexpr uint8_t FREC_REFRESCO = 4;  // Cada cuántos pasos se redibuja la cuadrícula
+
+// Límites de detección física
+constexpr float DIST_MIN_VALIDA = 2.0;
+constexpr float DIST_MAX_VALIDA = 400.0;
+
+// ---------------- INSTANCIAS Y VARIABLES GLOBALES ----------------
 MCUFRIEND_kbv tft;
+Servo miServo;
 
-// MANTENEMOS TUS PINES (0 Rx y 1 Tx para sensor, 10-13 para motor)
-const int PIN_TRIG = 0;  
-const int PIN_ECHO = 1;  
-//posiciones de los pines del ULN2003 in1,in3,in2,in4
-Stepper motor(2048, 10, 12, 11, 13); 
+// Almacenamiento del estado anterior para borrado selectivo
+uint16_t oldLx = CENTRO_X;
+uint16_t oldLy = CENTRO_Y;
+uint8_t contadorRefresco = 0;
 
-const int PASOS_POR_REVOLUCION = 2048; 
-const float VELOCIDAD_SONIDO = 0.0343;
+// PROTOTIPOS DE FUNCIONES (Buena práctica para organización de código)
+void dibujarRadarBase();
+void actualizarRadar(uint8_t angulo, float distancia);
+void reforzarCuadricula();
+float obtenerDistancia();
 
-#define NEGRO       0x0000
-#define VERDE       0x07E0
-#define VERDE_OSC   0x0320 
-#define ROJO        0xF800
-
-int centroX = 160;
-int centroY = 120;
-int radioMax = 110;
-int oldLx = 160;
-int oldLy = 120;
-
+// -------------------------------------------
+// SETUP
+// -------------------------------------------
 void setup() {
   pinMode(PIN_TRIG, OUTPUT);
   pinMode(PIN_ECHO, INPUT);
-  motor.setSpeed(8); 
-  
+
+  miServo.attach(PIN_SERVO);
+
   uint16_t ID = tft.readID();
   tft.begin(ID);
-  tft.setRotation(1); 
-  tft.fillScreen(NEGRO);
-  
-  dibujarInterfazCompleta();
+
+  tft.setRotation(1); // Modo Horizontal
+  tft.fillScreen(COLOR_NEGRO);
+
+  dibujarRadarBase();
+
+  miServo.write(0);
+  delay(800); // Esperar a que el servo se posicione físicamente
 }
 
+// -------------------------------------------
+// LOOP
+// -------------------------------------------
 void loop() {
-  for (int p = 0; p < PASOS_POR_REVOLUCION; p += 16) {
-    motor.step(16);
-    float angulo = (p * 360.0) / PASOS_POR_REVOLUCION;
-    
-    // Mediana de 3 para balance entre velocidad y precisión
-    float distancia = obtenerMediana(3); 
-    
-    actualizarRadarPuntos(angulo, distancia);
+  // BARRIDO IDA (0° -> 180°)
+  for (uint8_t angulo = 0; angulo <= 180; angulo += PASO_ANGULO) {
+    miServo.write(angulo);
+    delay(TIEMPO_PASO);
+    float distancia = obtenerDistancia();
+    actualizarRadar(angulo, distancia);
   }
-  
-  // Limpieza al completar 360° para refrescar el mapa
-  tft.fillCircle(centroX, centroY, radioMax, NEGRO);
-  dibujarInterfazCompleta();
+
+  // BARRIDO VUELTA (180° -> 0°)
+  for (int16_t angulo = 180; angulo >= 0; angulo -= PASO_ANGULO) {
+    miServo.write(angulo);
+    delay(TIEMPO_PASO);
+    float distancia = obtenerDistancia();
+    actualizarRadar((uint8_t)angulo, distancia);
+  }
 }
 
-void actualizarRadarPuntos(float ang, float dist) {
-  float rad = (ang - 90) * PI / 180.0;
-  int lx = centroX + cos(rad) * radioMax;
-  int ly = centroY + sin(rad) * radioMax;
+// -------------------------------------------
+// ACTUALIZAR RADAR
+// -------------------------------------------
+void actualizarRadar(uint8_t angulo, float distancia) {
+  // Conversión a radianes (Se invierte el ángulo para visualización tipo radar de izquierda a derecha)
+  float rad = (180.0 - angulo) * PI / 180.0;
+  float cosRad = cos(rad);
+  float sinRad = sin(rad);
 
-  // 1. Borrar rastro de la línea anterior
-  tft.drawLine(centroX, centroY, oldLx, oldLy, NEGRO);
-  
-  // 2. REPARAR CUADRÍCULA (Para que no se borre poco a poco)
-  repararCuadricula();
+  // Coordenadas de la línea actual de barrido
+  uint16_t lx = CENTRO_X + (cosRad * RADIO_MAX);
+  uint16_t ly = CENTRO_Y - (sinRad * RADIO_MAX);
 
-  // 3. Dibujar objeto (BARRIDO DE PUNTOS)
-  // Ahora el rango es hasta 400 cm
-  if (dist > 2 && dist <= 400) {
-    int rPunto = map(dist, 0, 400, 0, radioMax);
-    int px = centroX + cos(rad) * rPunto;
-    int py = centroY + sin(rad) * rPunto;
-    
-    // Punto gordo para que se vea la silueta
-    tft.fillCircle(px, py, 2, ROJO); 
+  // 1. Borrar línea anterior con el color de fondo
+  tft.drawLine(CENTRO_X, CENTRO_Y, oldLx, oldLy, COLOR_NEGRO);
+
+  // 2. Dibujar línea nueva de barrido activo
+  tft.drawLine(CENTRO_X, CENTRO_Y, lx, ly, COLOR_VERDE);
+
+  // 3. Dibujar objeto detectado si está dentro del rango útil
+  if (distancia > DIST_MIN_VALIDA && distancia <= DIST_MAX_VALIDA) {
+    uint16_t r = map(distancia, 0, DIST_MAX_VALIDA, 0, RADIO_MAX);
+    uint16_t px = CENTRO_X + (cosRad * r);
+    uint16_t py = CENTRO_Y - (sinRad * r);
+
+    tft.fillCircle(px, py, 2, COLOR_ROJO); 
   }
 
-  // 4. Dibujar línea de barrido actual
-  tft.drawLine(centroX, centroY, lx, ly, VERDE);
-
+  // Guardar coordenadas actuales para borrarlas en el próximo ciclo
   oldLx = lx;
   oldLy = ly;
 
-  // Telemetría en tiempo real
-  tft.fillRect(0, 0, 70, 12, NEGRO);
-  tft.setCursor(0, 0);
-  tft.setTextColor(VERDE);
-  tft.print((int)dist); tft.print("cm");
+  // 4. Mantenimiento y persistencia de la cuadrícula
+  contadorRefresco++;
+  if (contadorRefresco >= FREC_REFRESCO) {
+    reforzarCuadricula();
+    contadorRefresco = 0;
+  }
+
+  // 5. TELEMETRÍA (Impresión de datos en pantalla)
+  // Cuadros de borrado selectivo para evitar parpadeos molestos
+  tft.fillRect(65, 5, 45, 16, COLOR_NEGRO);  
+  tft.fillRect(205, 5, 55, 16, COLOR_NEGRO); 
+
+  tft.setTextColor(COLOR_VERDE);
+  tft.setTextSize(2);
+  
+  tft.setCursor(15, 5);  tft.print(F("Ang:")); 
+  tft.setCursor(65, 5);  tft.print(angulo);
+  
+  tft.setCursor(135, 5); tft.print(F("Dist:")); 
+  tft.setCursor(205, 5);
+  
+  if (distancia >= DIST_MAX_VALIDA || distancia <= 0) {
+    tft.print(F("---"));
+  } else {
+    tft.print((int)distancia);
+    tft.print(F("cm"));
+  }
 }
 
-void dibujarInterfazCompleta() {
-  repararCuadricula();
-  
-  // Etiquetas de medida (100, 200, 300, 400 cm)
+// -------------------------------------------
+// DIBUJAR BASE COMPLETA DEL RADAR
+// -------------------------------------------
+void dibujarRadarBase() {
+  // Círculos concéntricos de distancia
+  tft.drawCircle(CENTRO_X, CENTRO_Y, RADIO_MAX, COLOR_VERDE_OSC);
+  tft.drawCircle(CENTRO_X, CENTRO_Y, RADIO_MAX * 0.75, COLOR_VERDE_OSC);
+  tft.drawCircle(CENTRO_X, CENTRO_Y, RADIO_MAX * 0.50, COLOR_VERDE_OSC);
+  tft.drawCircle(CENTRO_X, CENTRO_Y, RADIO_MAX * 0.25, COLOR_VERDE_OSC);
+
+  // Líneas angulares (cada 30 grados)
+  for (uint8_t ang = 0; ang <= 180; ang += 30) {
+    float rad = (180.0 - ang) * PI / 180.0;
+    uint16_t x = CENTRO_X + (cos(rad) * RADIO_MAX);
+    uint16_t y = CENTRO_Y - (sin(rad) * RADIO_MAX);
+    tft.drawLine(CENTRO_X, CENTRO_Y, x, y, COLOR_VERDE_OSC);
+  }
+
+  // Etiquetas de los ángulos principales
+  tft.setTextColor(COLOR_GRIS);
   tft.setTextSize(1);
-  tft.setTextColor(VERDE_OSC);
-  tft.setCursor(centroX + (radioMax*0.25) - 5, centroY + 5); tft.print("100");
-  tft.setCursor(centroX + (radioMax*0.50) - 5, centroY + 5); tft.print("200");
-  tft.setCursor(centroX + (radioMax*0.75) - 5, centroY + 5); tft.print("300");
-  tft.setCursor(centroX + radioMax - 20, centroY + 5);       tft.print("400");
+  tft.setCursor(CENTRO_X - RADIO_MAX - 15, CENTRO_Y - 3);  tft.print(F("0"));
+  tft.setCursor(CENTRO_X - 5, CENTRO_Y - RADIO_MAX - 12); tft.print(F("90"));
+  tft.setCursor(CENTRO_X + RADIO_MAX + 8, CENTRO_Y - 3);   tft.print(F("180"));
+
+  // Etiquetas de distancia (cm)
+  tft.setCursor(CENTRO_X + 4, CENTRO_Y - (RADIO_MAX * 0.25) - 7); tft.print(F("100"));
+  tft.setCursor(CENTRO_X + 4, CENTRO_Y - (RADIO_MAX * 0.50) - 7); tft.print(F("200"));
+  tft.setCursor(CENTRO_X + 4, CENTRO_Y - (RADIO_MAX * 0.75) - 7); tft.print(F("300"));
+  tft.setCursor(CENTRO_X + 4, CENTRO_Y - RADIO_MAX - 2);          tft.print(F("400"));
 }
 
-void repararCuadricula() {
-  // Círculos concéntricos
-  tft.drawCircle(centroX, centroY, radioMax, VERDE_OSC);
-  tft.drawCircle(centroX, centroY, radioMax * 0.75, VERDE_OSC);
-  tft.drawCircle(centroX, centroY, radioMax * 0.50, VERDE_OSC);
-  tft.drawCircle(centroX, centroY, radioMax * 0.25, VERDE_OSC);
+// -------------------------------------------
+// REFORZAR CUADRÍCULA DURANTE EL BARRIDO
+// -------------------------------------------
+void reforzarCuadricula() {
+  tft.drawCircle(CENTRO_X, CENTRO_Y, RADIO_MAX, COLOR_VERDE_OSC);
+  tft.drawCircle(CENTRO_X, CENTRO_Y, RADIO_MAX * 0.75, COLOR_VERDE_OSC);
+  tft.drawCircle(CENTRO_X, CENTRO_Y, RADIO_MAX * 0.50, COLOR_VERDE_OSC);
+  tft.drawCircle(CENTRO_X, CENTRO_Y, RADIO_MAX * 0.25, COLOR_VERDE_OSC);
+
+  tft.drawLine(CENTRO_X - RADIO_MAX, CENTRO_Y, CENTRO_X + RADIO_MAX, CENTRO_Y, COLOR_VERDE_OSC);
   
-  // Ejes principales
-  tft.drawLine(centroX - radioMax, centroY, centroX + radioMax, centroY, VERDE_OSC);
-  tft.drawLine(centroX, centroY - radioMax, centroX, centroY + radioMax, VERDE_OSC);
+  tft.setTextColor(COLOR_GRIS);
+  tft.setTextSize(1);
+  tft.setCursor(CENTRO_X + 4, CENTRO_Y - (RADIO_MAX * 0.50) - 7); tft.print(F("200"));
+  tft.setCursor(CENTRO_X + 4, CENTRO_Y - RADIO_MAX - 2);          tft.print(F("400"));
 }
 
-float obtenerMediana(int n) {
-  float lecturas[n];
-  for (int i = 0; i < n; i++) {
-    digitalWrite(PIN_TRIG, LOW);
-    delayMicroseconds(2);
-    digitalWrite(PIN_TRIG, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(PIN_TRIG, LOW);
-    
-    // Timeout de 24000us (~4 metros de rango)
-    long duracion = pulseIn(PIN_ECHO, HIGH, 24000); 
-    
-    if (duracion == 0) lecturas[i] = 450; 
-    else lecturas[i] = (duracion * VELOCIDAD_SONIDO) / 2.0;
-    delay(3); // Pausa de estabilización del sensor
+// -------------------------------------------
+// LECTURA DEL SENSOR ULTRASONICO OPTIMIZADA
+// -------------------------------------------
+float obtenerDistancia() {
+  // Limpieza del pin ECHO ante saturación física
+  pinMode(PIN_ECHO, OUTPUT);
+  digitalWrite(PIN_ECHO, LOW);
+  delayMicroseconds(2);
+  pinMode(PIN_ECHO, INPUT);
+
+  // Disparo del pulso ultrasónico (Trigger)
+  digitalWrite(PIN_TRIG, LOW);
+  delayMicroseconds(2);
+  digitalWrite(PIN_TRIG, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(PIN_TRIG, LOW);
+
+  // Medición del ancho del pulso devuelto
+  long duracion = pulseIn(PIN_ECHO, HIGH, TIMEOUT_ECHO); 
+
+  if (duracion == 0) {
+    return DIST_MAX_VALIDA; 
   }
   
-  // Ordenamiento burbuja para la mediana
-  for (int i = 0; i < n-1; i++) {
-    for (int j = 0; j < n-i-1; j++) {
-      if (lecturas[j] > lecturas[j+1]) {
-        float temp = lecturas[j];
-        lecturas[j] = lecturas[j+1];
-        lecturas[j+1] = temp;
-      }
-    }
+  float dist = (duracion * VELOCIDAD_SONIDO) / 2.0;
+
+  // Filtro de validación rápida para evitar "glitches" (falsos positivos fijos en ~15cm)
+  if (dist > 14.0 && dist < 16.0) {
+     digitalWrite(PIN_TRIG, HIGH); 
+     delayMicroseconds(10); 
+     digitalWrite(PIN_TRIG, LOW);
+     long duracion2 = pulseIn(PIN_ECHO, HIGH, TIMEOUT_ECHO);
+     if (duracion2 > 0) {
+        dist = (duracion2 * VELOCIDAD_SONIDO) / 2.0;
+     }
   }
-  return lecturas[n/2];
+
+  return dist;
 }
