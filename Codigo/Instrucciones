@@ -5,33 +5,38 @@ SISTEMA DE RADAR AUTÓNOMO 360° - GUÍA DE CONFIGURACIÓN RÁPIDA
 1. DEPENDENCIAS DE BIBLIOTECAS:
    Para que el código compile sin errores, asegúrate de tener instaladas
    las siguientes bibliotecas en tu Arduino IDE (puedes instalarlas desde
-   el Gestor de Bibliotecas o copiando las carpetas de /libraries a la
-   carpeta "libraries" de tus Documentos/Arduino):
+   el Gestor de Bibliotecas o copiando las carpetas a la ruta habitual
+   de tus Documentos/Arduino/libraries):
    
-   - MCUFRIEND_kbv (Por David Prentice) -> Controla el Shield TFT.
-   - Adafruit GFX Library (Por Adafruit) -> Renderiza los gráficos en pantalla.
-   - Stepper (Nativa de Arduino) -> Controla las fases del motor 28BYJ-48.
+   - MCUFRIEND_kbv (Por David Prentice) -> Controla el Shield TFT por bus paralelo.
+   - Adafruit GFX Library (Por Adafruit) -> Renderiza las primitivas gráficas.
+   - Servo (Nativa de Arduino) -> Genera las señales de control para el servomotor.
 
 2. AJUSTES PREVIOS A LA COMPILACIÓN:
-   - El código está configurado para un motor de 2048 pasos por revolución.
-     Si tu motor tiene otra relación de reducción, ajusta la constante
-     PASOS_POR_REVOLUCION.
-   - Velocidad del motor calibrada en setSpeed(8) para dar tiempo a que
-     el sensor ultrasónico tome sus 3 lecturas de la mediana móvil de forma estable.
+   - El código está configurado para un barrido angular de 0° a 180° (ida y vuelta)
+     utilizando un paso ajustable mediante la constante PASO_ANGULO (por defecto en 2°).
+   - Velocidad de muestreo y estabilidad física reguladas mediante la constante 
+     TIEMPO_PASO (15 ms), la cual otorga el tiempo de asentamiento necesario 
+     para que el sensor ultrasónico capture distancias precisas de hasta 400 cm.
 
-3. PROCESO DE CARGA DEL FIRMWARE (¡CRÍTICO!):
-   - ¡ADVERTENCIA!: Los pines TRIG y ECHO están asignados a los pines 0 y 1.
-   - PASO 1: Desconecta físicamente los cables de TRIG y ECHO de tu placa Arduino.
-   - PASO 2: Conecta el Arduino a la PC mediante el cable USB.
-   - PASO 3: Selecciona el puerto COM correcto y dale a "Subir" (Upload).
-   - PASO 4: Una vez que el IDE diga "Subido con éxito", vuelve a conectar 
-             los cables de TRIG y ECHO en los pines 0 y 1.
-   
-   *Si no desconectas los pines 0 y 1 durante la carga, la PC no podrá 
-    comunicarse con el chip ATmega y arrojará el error 'stk500_getsync()'.
+3. PROCESO DE CARGA DEL FIRMWARE (SEGURO):
+   - A diferencia de las configuraciones que saturan los pines de comunicación, 
+     los pines de control de este sistema están reasignados a zonas seguras:
+     * TRIG  -> Pin 12
+     * ECHO  -> Pin 11
+     * SERVO -> Pin 10
+   - PASO 1: Conecta la placa Arduino a la computadora mediante el cable USB.
+   - PASO 2: Selecciona la tarjeta correcta (p. ej., Arduino Uno) y su puerto COM.
+   - PASO 3: Haz clic en el botón "Subir" (Upload) en el Arduino IDE.
+   - NOTA: Al no utilizar los pines RX/TX (0 y 1), NO es necesario desconectar el 
+     sensor ni el actuador durante la carga del firmware; el proceso se completará 
+     de forma directa y limpia sin errores de sincronización 'stk500_getsync()'.
 
-4. ALIMENTACIÓN ELÉCTRICA:
-   - Recuerda alimentar el controlador ULN2003 con una fuente externa de 5V.
-   - Conecta el GND de la fuente externa al GND del Arduino para unificar la referencia.
-   - NO alimentes el motor directamente desde el pin de 5V del Arduino, o la pantalla
-     se apagará o parpadeará debido al consumo de corriente.
+4. ALIMENTACIÓN ELÉCTRICA Y SEGURIDAD:
+   - Aunque un servomotor micro (como el SG90) puede operar con el pin de 5V del 
+     Arduino durante pruebas breves, se recomienda una fuente externa de 5V dedicada 
+     para el servomotor si notas caídas de tensión o parpadeos en la pantalla TFT.
+   - Si empleas una fuente externa para el motor, recuerda unificar las referencias: 
+     conecta el GND de dicha fuente directamente a un pin GND disponible del Arduino.
+   - Asegúrate de que el Shield TFT esté firmemente asentado sobre los pines de la 
+     placa para evitar falsos contactos en las líneas de datos del bus paralelo.
